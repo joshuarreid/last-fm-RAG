@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
+# Ignore local secrets and environment files
+/src/main/resources/application-local.properties
+.env
