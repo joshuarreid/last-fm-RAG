@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class LastfmService {
@@ -34,64 +36,91 @@ public class LastfmService {
         this.authService = authService;
     }
 
-    /**
-     * Fetch recent tracks for a user.
-     * Uses session key from LastfmAuthService for authenticated requests.
-     */
+    /** -----------------------------
+     * Public API methods
+     * ----------------------------- */
+
     public List<Track> getRecentTracks(String username, Integer limit) throws IOException {
         if (limit == null) limit = defaultFetchLimit;
 
-        // Ensure user is authenticated
-        String sessionKey = authService.getSessionKey();
-        if (sessionKey == null) {
-            throw new IllegalStateException("User is not authenticated. Call authenticateDesktopUser() first.");
-        }
+        String sessionKey = requireSessionKey();
 
-        HttpUrl url = HttpUrl.parse(apiUrl).newBuilder()
-                .addQueryParameter("method", "user.getrecenttracks")
-                .addQueryParameter("user", username)
-                .addQueryParameter("api_key", authService.getApiKey())
-                .addQueryParameter("sk", sessionKey)
-                .addQueryParameter("format", "json")
-                .addQueryParameter("limit", String.valueOf(limit))
-                .addQueryParameter("api_sig", generateApiSigForRecentTracks(username, limit, sessionKey))
-                .build();
+        Map<String, String> params = new HashMap<>();
+        params.put("method", "user.getrecenttracks");
+        params.put("user", username);
+        params.put("api_key", authService.getApiKey());
+        params.put("sk", sessionKey);
+        params.put("format", "json");
+        params.put("limit", String.valueOf(limit));
+        params.put("api_sig", generateApiSig(params));
 
+        HttpUrl url = buildLastfmUrl(params);
+        JsonNode root = executeGetRequest(url);
+        return parseTracks(root.path("recenttracks").path("track"));
+    }
+
+    public List<Track> getLovedTracks(String username, Integer limit) throws IOException {
+        if (limit == null) limit = defaultFetchLimit;
+
+        String sessionKey = requireSessionKey();
+
+        Map<String, String> params = new HashMap<>();
+        params.put("method", "user.getlovedtracks");
+        params.put("user", username);
+        params.put("api_key", authService.getApiKey());
+        params.put("sk", sessionKey);
+        params.put("format", "json");
+        params.put("limit", String.valueOf(limit));
+        params.put("api_sig", generateApiSig(params));
+
+        HttpUrl url = buildLastfmUrl(params);
+        JsonNode root = executeGetRequest(url);
+        return parseTracks(root.path("lovedtracks").path("track"));
+    }
+
+    /** -----------------------------
+     * Reusable private helpers
+     * ----------------------------- */
+
+    private String requireSessionKey() {
+        String key = authService.getSessionKey();
+        if (key == null) throw new IllegalStateException("User is not authenticated. Call authenticateDesktopUser() first.");
+        return key;
+    }
+
+    private HttpUrl buildLastfmUrl(Map<String, String> params) {
+        HttpUrl.Builder builder = HttpUrl.parse(apiUrl).newBuilder();
+        params.forEach(builder::addQueryParameter);
+        return builder.build();
+    }
+
+    private JsonNode executeGetRequest(HttpUrl url) throws IOException {
         Request request = new Request.Builder().url(url).get().build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Unexpected response code: " + response.code());
             }
-
-            JsonNode root = objectMapper.readTree(response.body().string());
-            JsonNode tracksNode = root.path("recenttracks").path("track");
-
-            List<Track> tracks = new ArrayList<>();
-            for (JsonNode node : tracksNode) {
-                Track track = Track.builder()
-                        .trackName(node.path("name").asText())
-                        .artistName(node.path("artist").path("#text").asText())
-                        .albumName(node.path("album").path("#text").asText())
-                        .mbid(node.path("mbid").asText())
-                        .build();
-                tracks.add(track);
-            }
-            return tracks;
+            return objectMapper.readTree(response.body().string());
         }
     }
 
-    /**
-     * Generate API signature for authenticated request.
-     */
-    private String generateApiSigForRecentTracks(String username, int limit, String sessionKey) {
-        // Build parameter map
-        var params = new java.util.HashMap<String, String>();
-        params.put("api_key", authService.getApiKey());
-        params.put("method", "user.getrecenttracks");
-        params.put("sk", sessionKey);
-        params.put("user", username);
-        params.put("limit", String.valueOf(limit));
-        return LastfmAuthUtils.generateApiSig(params, authService.getApiSecret());
+    private List<Track> parseTracks(JsonNode tracksNode) {
+        List<Track> tracks = new ArrayList<>();
+        for (JsonNode node : tracksNode) {
+            tracks.add(Track.builder()
+                    .trackName(node.path("name").asText())
+                    .artistName(node.path("artist").path("#text").asText())
+                    .albumName(node.path("album").path("#text").asText())
+                    .mbid(node.path("mbid").asText())
+                    .build());
+        }
+        return tracks;
+    }
+
+    private String generateApiSig(Map<String, String> params) {
+        // Exclude 'format' if present in signature calculation
+        Map<String, String> signatureParams = new HashMap<>(params);
+        signatureParams.remove("format");
+        return LastfmAuthUtils.generateApiSig(signatureParams, authService.getApiSecret());
     }
 }
