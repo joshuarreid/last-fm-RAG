@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,8 +28,11 @@ public class LastfmAuthService {
     @Value("${lastfm.api.secret}")
     private String apiSecret;
 
-    @Value("${lastfm.api.url:https://ws.audioscrobbler.com/2.0/}")
+    @Value("${lastfm.api.url}")
     private String apiUrl;
+
+    @Value("${lastfm.auth.url}")
+    private String authUrl;
 
     @Value("${lastfm.session.key}")
     private String sessionKey;
@@ -59,7 +64,18 @@ public class LastfmAuthService {
 
     /** Step 3: Generate user authorization URL */
     public String getAuthorizationUrl(String token) {
-        return "http://www.last.fm/api/auth/?api_key=" + apiKey + "&token=" + token;
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Token cannot be null or empty");
+        }
+        if (authUrl == null || authUrl.isBlank()) {
+            throw new IllegalStateException("Authorization URL is not configured");
+        }
+        try {
+            return authUrl + "?api_key=" + URLEncoder.encode(apiKey, StandardCharsets.UTF_8)
+                    + "&token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to build authorization URL", e);
+        }
     }
 
     /** Step 4: Exchange authorized token for session key */
