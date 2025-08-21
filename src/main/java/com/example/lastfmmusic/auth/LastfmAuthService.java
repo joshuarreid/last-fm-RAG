@@ -1,4 +1,4 @@
-package com.example.lastfmmusic.service;
+package com.example.lastfmmusic.auth;
 
 import com.example.lastfmmusic.util.LastfmAuthUtils;
 import com.fasterxml.jackson.databind.JsonNode;

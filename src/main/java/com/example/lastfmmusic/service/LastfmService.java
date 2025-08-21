@@ -1,5 +1,6 @@
 package com.example.lastfmmusic.service;
 
+import com.example.lastfmmusic.auth.LastfmAuthService;
 import com.example.lastfmmusic.entity.Track;
 import com.example.lastfmmusic.util.LastfmAuthUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,6 +18,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.example.lastfmmusic.util.LastfmConstants.USER_GET_LOVED_TRACKS;
+import static com.example.lastfmmusic.util.LastfmConstants.USER_GET_RECENT_TRACKS;
+
 @Service
 public class LastfmService {
 
@@ -24,10 +28,10 @@ public class LastfmService {
     private final ObjectMapper objectMapper;
     private final LastfmAuthService authService;
 
-    @Value("${lastfm.api.url:https://ws.audioscrobbler.com/2.0/}")
+    @Value("${lastfm.api.url}")
     private String apiUrl;
 
-    @Value("${app.default.fetch.limit:50}")
+    @Value("${lastfm.default.fetch.limit}")
     private int defaultFetchLimit;
 
     public LastfmService(LastfmAuthService authService) {
@@ -41,38 +45,14 @@ public class LastfmService {
      * ----------------------------- */
 
     public List<Track> getRecentTracks(String username, Integer limit) throws IOException {
-        if (limit == null) limit = defaultFetchLimit;
-
-        String sessionKey = requireSessionKey();
-
-        Map<String, String> params = new HashMap<>();
-        params.put("method", "user.getrecenttracks");
-        params.put("user", username);
-        params.put("api_key", authService.getApiKey());
-        params.put("sk", sessionKey);
-        params.put("format", "json");
-        params.put("limit", String.valueOf(limit));
-        params.put("api_sig", generateApiSig(params));
-
+        Map<String, String> params = buildBaseParams(USER_GET_RECENT_TRACKS, username, limit, true);
         HttpUrl url = buildLastfmUrl(params);
         JsonNode root = executeGetRequest(url);
         return parseTracks(root.path("recenttracks").path("track"));
     }
 
     public List<Track> getLovedTracks(String username, Integer limit) throws IOException {
-        if (limit == null) limit = defaultFetchLimit;
-
-        String sessionKey = requireSessionKey();
-
-        Map<String, String> params = new HashMap<>();
-        params.put("method", "user.getlovedtracks");
-        params.put("user", username);
-        params.put("api_key", authService.getApiKey());
-        params.put("sk", sessionKey);
-        params.put("format", "json");
-        params.put("limit", String.valueOf(limit));
-        params.put("api_sig", generateApiSig(params));
-
+        Map<String, String> params = buildBaseParams(USER_GET_LOVED_TRACKS, username, limit, true);
         HttpUrl url = buildLastfmUrl(params);
         JsonNode root = executeGetRequest(url);
         return parseTracks(root.path("lovedtracks").path("track"));
@@ -122,5 +102,25 @@ public class LastfmService {
         Map<String, String> signatureParams = new HashMap<>(params);
         signatureParams.remove("format");
         return LastfmAuthUtils.generateApiSig(signatureParams, authService.getApiSecret());
+    }
+
+    private Map<String, String> buildBaseParams(String method, String username, Integer limit, boolean requiresSession) {
+        Map<String, String> params = new HashMap<>();
+        params.put("method", method);
+        params.put("user", username);
+        params.put("api_key", authService.getApiKey());
+        params.put("format", "json");
+        if (limit != null) {
+            params.put("limit", String.valueOf(limit));
+        } else {
+            params.put("limit", String.valueOf(defaultFetchLimit));
+        }
+        if (requiresSession) {
+            params.put("sk", requireSessionKey());
+        }
+
+        // generate api_sig dynamically for this method
+        params.put("api_sig", generateApiSig(params));
+        return params;
     }
 }

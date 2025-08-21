@@ -1,7 +1,7 @@
 package com.example.lastfmmusic;
 
 import com.example.lastfmmusic.entity.Track;
-import com.example.lastfmmusic.service.LastfmAuthService;
+import com.example.lastfmmusic.auth.LastfmAuthService;
 import com.example.lastfmmusic.service.LastfmService;
 import org.springframework.web.bind.annotation.*;
 
